@@ -2,8 +2,6 @@
 
 A modern, cyberpunk-styled service status dashboard for home labs built with Go and designed for NixOS integration. Monitor all your self-hosted services from a single, beautiful interface.
 
-![Homelab Dashboard](https://via.placeholder.com/800x400/0a0a0a/00d4ff?text=Homelab+Dashboard)
-
 ## Features
 
 - **Real-time Service Monitoring**: Checks service health via local port connectivity
