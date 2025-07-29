@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{.Title}}</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap");
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: linear-gradient(
+          135deg,
+          #0a0a0a 0%,
+          #1a1a2e 50%,
+          #16213e 100%
+        );
+        font-family: "Orbitron", monospace;
+        color: #00d4ff;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .background-grid {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-image: linear-gradient(
+            rgba(0, 212, 255, 0.1) 1px,
+            transparent 1px
+          ),
+          linear-gradient(90deg, rgba(0, 212, 255, 0.1) 1px, transparent 1px);
+        background-size: 50px 50px;
+        z-index: -1;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+        padding: 20px;
+      }
+
+      .title {
+        font-size: 3rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 4px;
+        background: linear-gradient(45deg, #00d4ff, #ff0080, #00ff88);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 10px;
+        text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+        animation: titleGlow 3s ease-in-out infinite alternate;
+      }
+
+      @keyframes titleGlow {
+        from {
+          filter: brightness(1);
+        }
+        to {
+          filter: brightness(1.2);
+        }
+      }
+
+      .subtitle {
+        font-size: 1.2rem;
+        opacity: 0.8;
+        font-weight: 400;
+      }
+
+      .services-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 25px;
+        margin-bottom: 40px;
+      }
+
+      .service-card {
+        background: rgba(0, 20, 40, 0.8);
+        border: 2px solid rgba(0, 212, 255, 0.3);
+        border-radius: 15px;
+        padding: 25px;
+        position: relative;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        backdrop-filter: blur(10px);
+        overflow: hidden;
+      }
+
+      .service-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(0, 212, 255, 0.1),
+          transparent
+        );
+        transition: left 0.5s;
+      }
+
+      .service-card:hover::before {
+        left: 100%;
+      }
+
+      .service-card:hover {
+        transform: translateY(-5px);
+        border-color: #00d4ff;
+        box-shadow: 0 10px 30px rgba(0, 212, 255, 0.3);
+      }
+
+      .service-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+
+      .service-name {
+        font-size: 1.4rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+      }
+
+      .status-indicator {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        position: relative;
+        transition: all 0.3s ease;
+        flex-shrink: 0;
+      }
+
+      .status-indicator.online {
+        background: #00ff88;
+        box-shadow: 0 0 15px #00ff88;
+        animation: pulse 2s infinite;
+      }
+
+      .status-indicator.offline {
+        background: #ff0040;
+        box-shadow: 0 0 15px #ff0040;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.1);
+          opacity: 0.8;
+        }
+      }
+
+      .service-url {
+        font-size: 0.9rem;
+        opacity: 0.7;
+        word-break: break-all;
+        margin-bottom: 15px;
+      }
+
+      .service-status {
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .status-online {
+        color: #00ff88;
+      }
+      .status-offline {
+        color: #ff0040;
+      }
+
+      .footer {
+        text-align: center;
+        padding: 20px;
+        opacity: 0.6;
+      }
+
+      .operational-status {
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      .status-operational {
+        color: #00ff88;
+      }
+      .status-limited {
+        color: #ffaa00;
+      }
+      .status-critical {
+        color: #ff0040;
+      }
+
+      a {
+          text-decoration: none;
+      }
+
+      .refresh-btn {
+        background: linear-gradient(45deg, #00d4ff, #0080ff);
+        border: none;
+        color: white;
+        padding: 12px 25px;
+        border-radius: 25px;
+        font-family: "Orbitron", monospace;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin: 20px auto;
+        display: block;
+      }
+
+      .refresh-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 212, 255, 0.4);
+      }
+
+      .last-updated {
+        font-size: 0.8rem;
+        opacity: 0.6;
+        margin-top: 10px;
+      }
+
+      @media (max-width: 768px) {
+        .title {
+          font-size: 2rem;
+          letter-spacing: 2px;
+        }
+
+        .services-grid {
+          grid-template-columns: 1fr;
+          gap: 15px;
+        }
+
+        .service-card {
+          padding: 20px;
+        }
+      }
+
+      .loading-indicator {
+        display: none;
+        width: 40px;
+        height: 40px;
+        border: 3px solid rgba(0, 212, 255, 0.3);
+        border-top: 3px solid #00d4ff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 20px auto;
+      }
+
+      @keyframes spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="background-grid"></div>
+
+    <div class="container">
+      <header class="header">
+        <h1 class="title">{{.Title}}</h1>
+        <p class="subtitle">Service Status Dashboard</p>
+      </header>
+
+      <div class="services-grid">
+        {{range .Services}}
+        <div class="service-card" onclick="openService('{{.URL}}')">
+          <div class="service-header">
+            <div class="service-name">{{.Name}}</div>
+            <div class="status-indicator {{if .Online}}online{{else}}offline{{end}}"></div>
+          </div>
+          <div class="service-url">{{.URL}}</div>
+          <div class="service-status {{if .Online}}status-online{{else}}status-offline{{end}}">
+            {{.Status}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+
+      <div class="loading-indicator" id="loadingIndicator"></div>
+
+      <a href="/">
+        <button class="refresh-btn">
+            Refresh Status
+        </button>
+      </a>
+
+      <footer class="footer">
+        <div class="last-updated">Last updated: {{.LastUpdated}}</div>
+        <p>
+          &copy; 2025 Local Cloud | Status:
+          <span class="operational-status {{if eq .OperationalStatus "Operational"}}status-operational{{else if eq .OperationalStatus "Limited"}}status-limited{{else}}status-critical{{end}}">{{.OperationalStatus}}</span>
+        </p>
+      </footer>
+    </div>
+
+    <script>
+      function openService(url) {
+        window.open(url, "_blank");
+      }
+
+      // Auto-refresh every 5 minutes
+      setInterval(() => {
+        window.location.reload();
+      }, 5 * 60 * 1000);
+
+      // Add some visual flair with random glitch effects
+      setInterval(() => {
+        const cards = document.querySelectorAll(".service-card");
+        const randomCard = cards[Math.floor(Math.random() * cards.length)];
+        if (randomCard && Math.random() < 0.1) {
+          randomCard.style.filter = "hue-rotate(180deg)";
+          setTimeout(() => {
+            randomCard.style.filter = "";
+          }, 200);
+        }
+      }, 2000);
+    </script>
+  </body>
+</html>

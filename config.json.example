@@ -1,0 +1,70 @@
+{
+  "port": 8080,
+  "title": "Home Lab Control Center",
+  "services": {
+    "Portainer": {
+      "port": 9000,
+      "url": "https://portainer.mydomain.com"
+    },
+    "Grafana": {
+      "port": 3000,
+      "url": "https://grafana.mydomain.com"
+    },
+    "Prometheus": {
+      "port": 9090,
+      "url": "https://prometheus.mydomain.com"
+    },
+    "NextCloud": {
+      "port": 8081,
+      "url": "https://nextcloud.mydomain.com"
+    },
+    "Home Assistant": {
+      "port": 8123,
+      "url": "https://homeassistant.mydomain.com"
+    },
+    "Pi-hole": {
+      "port": 8082,
+      "url": "https://pihole.mydomain.com"
+    },
+    "Jellyfin": {
+      "port": 8096,
+      "url": "https://jellyfin.mydomain.com"
+    },
+    "Sonarr": {
+      "port": 8989,
+      "url": "https://sonarr.mydomain.com"
+    },
+    "Radarr": {
+      "port": 7878,
+      "url": "https://radarr.mydomain.com"
+    },
+    "Transmission": {
+      "port": 9091,
+      "url": "https://transmission.mydomain.com"
+    },
+    "Nginx Proxy Manager": {
+      "port": 81,
+      "url": "https://nginx.mydomain.com"
+    },
+    "Uptime Kuma": {
+      "port": 3001,
+      "url": "https://uptime.mydomain.com"
+    },
+    "AdGuard Home": {
+      "port": 3002,
+      "url": "https://adguard.mydomain.com"
+    },
+    "Traefik": {
+      "port": 8080,
+      "url": "https://traefik.mydomain.com"
+    },
+    "MinIO": {
+      "port": 9001,
+      "url": "https://minio.mydomain.com"
+    },
+    "Vault": {
+      "port": 8200,
+      "url": "https://vault.mydomain.com"
+    }
+  }
+}
