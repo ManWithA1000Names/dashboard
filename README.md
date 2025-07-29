@@ -142,7 +142,7 @@ The dashboard uses a simple but effective approach to monitor your services:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    homelab-dashboard.url = "github:yourusername/homelab-dashboard";
+    homelab-dashboard.url = "github:manwitha1000names/dashboard";
   };
 
   outputs = { self, nixpkgs, homelab-dashboard }: {
