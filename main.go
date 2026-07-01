@@ -142,15 +142,21 @@ func isLocalHostname(hostport string) bool {
 }
 
 // fetchImage GETs a URL and returns the body only if it looks like an image.
-func fetchImage(rawURL string) ([]byte, string) {
+// It returns a descriptive error so callers can log exactly why a source failed.
+func fetchImage(rawURL string) ([]byte, string, error) {
 	resp, err := favClient.Get(rawURL)
 	if err != nil {
-		return nil, ""
+		// Unwrap to keep the message concise (strip the redundant URL prefix
+		// that net/http prepends, since we already log the URL ourselves).
+		if ue, ok := err.(*url.Error); ok {
+			return nil, "", ue.Err
+		}
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, ""
+		return nil, "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
 	ct := strings.TrimSpace(strings.ToLower(strings.Split(resp.Header.Get("Content-Type"), ";")[0]))
@@ -158,22 +164,25 @@ func fetchImage(rawURL string) ([]byte, string) {
 	// Accept known image MIME types; also accept octet-stream for servers
 	// that don't set Content-Type correctly for favicon.ico.
 	if !strings.HasPrefix(ct, "image/") && ct != "application/octet-stream" {
-		return nil, ""
+		return nil, "", fmt.Errorf("non-image content-type %q", ct)
 	}
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 512*1024))
-	if err != nil || len(data) < 8 {
-		return nil, ""
+	if err != nil {
+		return nil, "", fmt.Errorf("read error: %w", err)
+	}
+	if len(data) < 8 {
+		return nil, "", fmt.Errorf("response too small (%d bytes)", len(data))
 	}
 
 	// For octet-stream, detect the real MIME type from magic bytes.
 	if ct == "application/octet-stream" {
 		ct = detectImageMIME(data)
 		if ct == "" {
-			return nil, ""
+			return nil, "", fmt.Errorf("unrecognised image format (octet-stream, %d bytes)", len(data))
 		}
 	}
-	return data, ct
+	return data, ct, nil
 }
 
 // detectImageMIME sniffs common image formats from the first few bytes.
@@ -219,13 +228,25 @@ type iconLink struct {
 func parseHTMLIcons(base *url.URL) []iconLink {
 	resp, err := favClient.Get(base.String())
 	if err != nil {
+		if ue, ok := err.(*url.Error); ok {
+			log.Printf("favicon: [%s] html — GET error: %v", base.Host, ue.Err)
+		} else {
+			log.Printf("favicon: [%s] html — GET error: %v", base.Host, err)
+		}
 		return nil
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("favicon: [%s] html — HTTP %d", base.Host, resp.StatusCode)
+		// A non-2xx page (e.g. 401 login, 302 redirect loop) won't have
+		// useful icon links, but we still attempt to parse what we got.
+	}
+
 	// Read only the first 64 KB — enough to cover <head> on any real page.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 	if err != nil {
+		log.Printf("favicon: [%s] html — read error: %v", base.Host, err)
 		return nil
 	}
 
@@ -315,35 +336,59 @@ func bestIconURL(icons []iconLink) string {
 func resolveFavicon(rawURL string) ([]byte, string) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
+		log.Printf("favicon: invalid URL %q: %v", rawURL, err)
 		return nil, ""
 	}
 	base := &url.URL{Scheme: parsed.Scheme, Host: parsed.Host}
+	host := parsed.Host
+
+	log.Printf("favicon: [%s] resolving", host)
 
 	// 1. HTML link tags — bestIconURL scores by size, so we get the
 	//    highest-resolution variant the site declares (e.g. YouTube 144 px).
-	if icons := parseHTMLIcons(base); len(icons) > 0 {
-		if best := bestIconURL(icons); best != "" {
-			if data, ct := fetchImage(best); data != nil {
+	icons := parseHTMLIcons(base) // fetch errors already logged inside
+	if len(icons) > 0 {
+		best := bestIconURL(icons)
+		if best != "" {
+			log.Printf("favicon: [%s] html — %d link(s) found, trying: %s", host, len(icons), best)
+			if data, ct, err := fetchImage(best); err == nil {
+				log.Printf("favicon: [%s] ✓ html (%s, %d B)", host, ct, len(data))
 				return data, ct
+			} else {
+				log.Printf("favicon: [%s] html — fetch failed: %v", host, err)
 			}
+		} else {
+			log.Printf("favicon: [%s] html — %d link(s) parsed but none scored", host, len(icons))
 		}
+	} else {
+		log.Printf("favicon: [%s] html — no icon links found", host)
 	}
 
 	// 2. Classic /favicon.ico (works even for auth-protected services
 	//    whose root page returns a login redirect without icon links).
-	if data, ct := fetchImage(base.String() + "/favicon.ico"); data != nil {
+	icoURL := base.String() + "/favicon.ico"
+	if data, ct, err := fetchImage(icoURL); err == nil {
+		log.Printf("favicon: [%s] ✓ /favicon.ico (%s, %d B)", host, ct, len(data))
 		return data, ct
+	} else {
+		log.Printf("favicon: [%s] /favicon.ico — %v", host, err)
 	}
 
 	// 3. Google favicon service — skipped for local/private addresses.
-	if !isLocalHostname(parsed.Host) {
+	if isLocalHostname(parsed.Host) {
+		log.Printf("favicon: [%s] local/private host — skipping Google fallback", host)
+	} else {
 		googleURL := "https://www.google.com/s2/favicons?domain=" +
 			url.QueryEscape(parsed.Hostname()) + "&sz=128"
-		if data, ct := fetchImage(googleURL); data != nil {
+		if data, ct, err := fetchImage(googleURL); err == nil {
+			log.Printf("favicon: [%s] ✓ Google (%s, %d B)", host, ct, len(data))
 			return data, ct
+		} else {
+			log.Printf("favicon: [%s] Google — %v", host, err)
 		}
 	}
 
+	log.Printf("favicon: [%s] no icon found", host)
 	return nil, ""
 }
 
