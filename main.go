@@ -251,6 +251,15 @@ func parseHTMLIcons(base *url.URL) []iconLink {
 	}
 	defer resp.Body.Close()
 
+	// resp.Request.URL is the final URL after following all redirects.
+	// We must resolve relative hrefs against THIS URL, not the original base.
+	// e.g. GET http://cloud-fin.local/ → 302 → http://cloud-fin.local/web/
+	// means href="touchicon.png" → http://cloud-fin.local/web/touchicon.png
+	finalURL := resp.Request.URL
+	if finalURL.String() != base.String() {
+		log.Printf("favicon: [%s] html — followed redirect to %s", base.Host, finalURL)
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		log.Printf("favicon: [%s] html — HTTP %d", base.Host, resp.StatusCode)
 		// A non-2xx page (e.g. 401 login, 302 redirect loop) won't have
@@ -295,7 +304,8 @@ func parseHTMLIcons(base *url.URL) []iconLink {
 			continue
 		}
 
-		resolved, err := base.Parse(href)
+		// Resolve relative hrefs against finalURL (post-redirect), not base.
+		resolved, err := finalURL.Parse(href)
 		if err != nil {
 			continue
 		}
