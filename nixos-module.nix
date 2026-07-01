@@ -164,8 +164,10 @@ in {
         ProtectSystem    = "strict";   # whole fs read-only except StateDirectory
         ProtectHome      = true;
 
-        # Outbound HTTP is required for favicon resolution.
-        RestrictAddressFamilies = [ "AF_INET" "AF_INET6" ];
+        # Outbound HTTP/HTTPS for favicon resolution (AF_INET/AF_INET6) plus
+        # AF_UNIX so the system resolver can reach the Avahi daemon socket
+        # (needed to resolve .local mDNS hostnames via nss-mdns).
+        RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
 
         LockPersonality        = true;
         MemoryDenyWriteExecute = true;
