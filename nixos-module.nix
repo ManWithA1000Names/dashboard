@@ -6,13 +6,10 @@ let
   cfg = config.services.homelab-dashboard;
 
   # Read-only config file baked into the Nix store.
-  # Only port, title and services (URLs) are needed — port-based health
-  # checks were removed, so the service port sub-field is kept solely for
-  # JSON round-trip compatibility with hand-written configs.
   configFile = pkgs.writeText "homelab-dashboard-config.json" (builtins.toJSON {
     port     = cfg.port;
     title    = cfg.title;
-    services = mapAttrs (_: svc: { inherit (svc) url; }) cfg.services;
+    services = mapAttrs (_: svc: { inherit (svc) url name; }) cfg.services;
   });
 
   homelab-dashboard = pkgs.buildGoModule {
@@ -62,6 +59,11 @@ in {
             description = "URL this shortcut points to.";
             example     = "https://grafana.mydomain.com";
           };
+          name = mkOption {
+            type        = types.str;
+            default     = "";
+            description = ''Display label shown under the icon.  If empty the URL is shown instead.'';  
+          };
           # Kept for backward compatibility with existing NixOS configs that
           # set a port value.  The dashboard no longer does port-based health
           # checks so this field is written into config.json but ignored at
@@ -74,12 +76,12 @@ in {
         };
       });
       default = {
-        "Portainer"      = { url = "http://localhost:9000"; };
-        "Grafana"        = { url = "http://localhost:3000"; };
-        "Prometheus"     = { url = "http://localhost:9090"; };
-        "NextCloud"      = { url = "http://localhost:8081"; };
-        "Home Assistant" = { url = "http://localhost:8123"; };
-        "Pi-hole"        = { url = "http://localhost:8082"; };
+        "Portainer"      = { url = "http://localhost:9000"; name = "Portainer"; };
+        "Grafana"        = { url = "http://localhost:3000"; name = "Grafana"; };
+        "Prometheus"     = { url = "http://localhost:9090"; name = "Prometheus"; };
+        "NextCloud"      = { url = "http://localhost:8081"; name = "NextCloud"; };
+        "Home Assistant" = { url = "http://localhost:8123"; name = "Home Assistant"; };
+        "Pi-hole"        = { url = "http://localhost:8082"; name = "Pi-hole"; };
       };
       description = ''
         Built-in shortcuts (hardcoded).  These are not editable at runtime;

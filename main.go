@@ -31,6 +31,7 @@ import (
 type ServiceConfig struct {
 	Port int    `json:"port"`
 	URL  string `json:"url"`
+	Name string `json:"name,omitempty"`
 }
 
 type Config struct {
@@ -81,17 +82,19 @@ var (
 // ---------------------------------------------------------------------------
 
 var (
-	favCacheDir = "favicon-cache" // set in loadConfig
+	favCacheDir string // set in loadConfig
 
 	// Single HTTP client for all favicon fetching: short timeout and
 	// InsecureSkipVerify because homelab services often use self-signed certs.
 	favClient = &http.Client{ //nolint:gosec
 		Timeout: 7 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-			DialContext: (&net.Dialer{
-				Timeout: 4 * time.Second,
-			}).DialContext,
+		Transport: &userAgentTransport{
+			inner: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+				DialContext: (&net.Dialer{
+					Timeout: 4 * time.Second,
+				}).DialContext,
+			},
 		},
 	}
 
@@ -120,6 +123,17 @@ var (
 	reAttrHref = regexp.MustCompile(`(?i)\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+?)[>\s/])`)
 	reAttrSize = regexp.MustCompile(`(?i)\bsizes\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+?)[>\s/])`)
 )
+
+// userAgentTransport injects a browser-like User-Agent so that SPA frameworks
+// (Next.js, Vite, etc.) don't serve stripped-down bot responses that omit
+// the <link rel="icon"> tags we need.
+type userAgentTransport struct{ inner http.RoundTripper }
+
+func (t *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r := req.Clone(req.Context())
+	r.Header.Set("User-Agent", "Mozilla/5.0 (compatible; homelab-dashboard/1.0)")
+	return t.inner.RoundTrip(r)
+}
 
 // isLocalHostname returns true for localhost, loopback, RFC-1918, and common
 // local TLDs — domains Google's CDN cannot reach.
@@ -296,36 +310,48 @@ func parseHTMLIcons(base *url.URL) []iconLink {
 	return icons
 }
 
-// bestIconURL picks the highest-quality icon from a list.
-// Priority: apple-touch-icon > SVG > largest declared size > first match.
-func bestIconURL(icons []iconLink) string {
-	best := ""
-	bestScore := -1
+// rankedIconURLs returns the href of each icon link sorted best-first.
+// Duplicates are removed. Priority: apple-touch-icon > SVG > largest size.
+func rankedIconURLs(icons []iconLink) []string {
+	type scored struct {
+		href  string
+		score int
+	}
+
+	seen := make(map[string]bool)
+	var entries []scored
 
 	for _, ic := range icons {
-		score := 0
+		if seen[ic.href] {
+			continue
+		}
+		seen[ic.href] = true
+
+		s := 0
 		if strings.Contains(ic.rel, "apple-touch-icon") {
-			score += 2000
+			s += 2000
 		}
-		// Prefer SVG (resolution-independent)
 		if strings.HasSuffix(strings.ToLower(ic.href), ".svg") {
-			score += 500
+			s += 500
 		}
-		// Score by declared pixel size
 		for _, sz := range strings.Fields(ic.sizes) {
 			parts := strings.SplitN(strings.ToLower(sz), "x", 2)
 			if len(parts) == 2 {
 				if w, err := strconv.Atoi(parts[0]); err == nil {
-					score += w
+					s += w
 				}
 			}
 		}
-		if score > bestScore {
-			bestScore = score
-			best = ic.href
-		}
+		entries = append(entries, scored{href: ic.href, score: s})
 	}
-	return best
+
+	sort.Slice(entries, func(i, j int) bool { return entries[i].score > entries[j].score })
+
+	ourls := make([]string, len(entries))
+	for i, e := range entries {
+		ourls[i] = e.href
+	}
+	return ourls
 }
 
 // resolveFavicon tries, in order:
@@ -344,22 +370,22 @@ func resolveFavicon(rawURL string) ([]byte, string) {
 
 	log.Printf("favicon: [%s] resolving", host)
 
-	// 1. HTML link tags — bestIconURL scores by size, so we get the
-	//    highest-resolution variant the site declares (e.g. YouTube 144 px).
+	// 1. HTML link tags — try every candidate in score order so that if the
+	//    highest-quality URL is broken (e.g. a hashed Vite asset that 404s)
+	//    we automatically fall back to the next best one.
 	icons := parseHTMLIcons(base) // fetch errors already logged inside
-	if len(icons) > 0 {
-		best := bestIconURL(icons)
-		if best != "" {
-			log.Printf("favicon: [%s] html — %d link(s) found, trying: %s", host, len(icons), best)
-			if data, ct, err := fetchImage(best); err == nil {
+	if ranked := rankedIconURLs(icons); len(ranked) > 0 {
+		log.Printf("favicon: [%s] html — %d link(s) found", host, len(ranked))
+		for _, iconURL := range ranked {
+			log.Printf("favicon: [%s] html — trying: %s", host, iconURL)
+			if data, ct, err := fetchImage(iconURL); err == nil {
 				log.Printf("favicon: [%s] ✓ html (%s, %d B)", host, ct, len(data))
 				return data, ct
 			} else {
-				log.Printf("favicon: [%s] html — fetch failed: %v", host, err)
+				log.Printf("favicon: [%s] html — %s: %v", host, iconURL, err)
 			}
-		} else {
-			log.Printf("favicon: [%s] html — %d link(s) parsed but none scored", host, len(icons))
 		}
+		log.Printf("favicon: [%s] html — all %d link(s) failed", host, len(ranked))
 	} else {
 		log.Printf("favicon: [%s] html — no icon links found", host)
 	}
@@ -398,7 +424,10 @@ func faviconCacheHash(rawURL string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-const faviconSentinelTTL = 24 * time.Hour
+const (
+	faviconSentinelTTL      = 24 * time.Hour // public hosts
+	faviconSentinelTTLLocal = 1 * time.Hour  // local/mDNS hosts — retry sooner
+)
 
 // faviconFromDisk checks the on-disk cache.
 // Returns (data, contentType, cacheHit).
@@ -407,19 +436,25 @@ func faviconFromDisk(hash string) ([]byte, string, bool) {
 	matches, _ := filepath.Glob(filepath.Join(favCacheDir, hash+".*"))
 	for _, m := range matches {
 		ext := strings.TrimPrefix(filepath.Ext(m), ".")
-		if ext == "404" {
-			// Sentinels expire after 24 h so public sites that later add a
-			// favicon are eventually discovered without manual intervention.
+		switch ext {
+		case "404": // public-host sentinel
 			if info, err := os.Stat(m); err == nil && time.Since(info.ModTime()) < faviconSentinelTTL {
-				return nil, "", true // still valid
+				return nil, "", true
 			}
-			os.Remove(m) //nolint:errcheck  expired — fall through to a fresh resolve
+			os.Remove(m) //nolint:errcheck
 			return nil, "", false
-		}
-		if mime, ok := extToMIME[ext]; ok {
-			data, err := os.ReadFile(m)
-			if err == nil && len(data) > 0 {
-				return data, mime, true
+		case "404l": // local-host sentinel (shorter TTL)
+			if info, err := os.Stat(m); err == nil && time.Since(info.ModTime()) < faviconSentinelTTLLocal {
+				return nil, "", true
+			}
+			os.Remove(m) //nolint:errcheck
+			return nil, "", false
+		default:
+			if mime, ok := extToMIME[ext]; ok {
+				data, err := os.ReadFile(m)
+				if err == nil && len(data) > 0 {
+					return data, mime, true
+				}
 			}
 		}
 	}
@@ -427,9 +462,9 @@ func faviconFromDisk(hash string) ([]byte, string, bool) {
 }
 
 // faviconToDisk writes a resolved favicon (or a not-found sentinel) to disk.
-// rawURL is required so we can decide whether to write a sentinel:
-// local/private hosts are never sentinelled — they might simply not be
-// running yet and will come online later; retrying them is instant.
+// Local hosts get a ".404l" sentinel with a 1 h TTL so that services that
+// come online (or fix a broken icon URL) are discovered within the hour.
+// Public hosts get a ".404" sentinel with a 24 h TTL.
 func faviconToDisk(hash string, data []byte, ct string, rawURL string) {
 	if err := os.MkdirAll(favCacheDir, 0755); err != nil {
 		log.Printf("favicon-cache: cannot create directory: %v", err)
@@ -437,14 +472,13 @@ func faviconToDisk(hash string, data []byte, ct string, rawURL string) {
 	}
 
 	if data == nil {
-		// Skip sentinel for local hosts — failures are instant and the
-		// service may come online at any time.
+		var sentinelExt string
 		if parsed, err := url.Parse(rawURL); err == nil && isLocalHostname(parsed.Host) {
-			return
+			sentinelExt = ".404l" // short TTL
+		} else {
+			sentinelExt = ".404" // long TTL
 		}
-		// Public host with no favicon — write a timed sentinel.
-		fpath := filepath.Join(favCacheDir, hash+".404")
-		os.WriteFile(fpath, nil, 0644) //nolint:errcheck
+		os.WriteFile(filepath.Join(favCacheDir, hash+sentinelExt), nil, 0644) //nolint:errcheck
 		return
 	}
 
@@ -621,10 +655,14 @@ func saveShortcuts() error {
 
 func getHardcodedShortcuts() []Shortcut {
 	out := make([]Shortcut, 0, len(config.Services))
-	for name, svc := range config.Services {
+	for key, svc := range config.Services {
+		displayName := svc.Name
+		if displayName == "" {
+			displayName = svc.URL
+		}
 		out = append(out, Shortcut{
-			ID:        hardcodedID(name),
-			Name:      name,
+			ID:        hardcodedID(key),
+			Name:      displayName,
 			URL:       svc.URL,
 			Hardcoded: true,
 		})
